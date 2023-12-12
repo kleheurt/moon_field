@@ -46,6 +46,12 @@ mod tests {
     }
 
     #[test]
+    fn is_zero(){
+        assert!(!F2(true).is_zero());
+        assert!(F2(false).is_zero());
+    }
+
+    #[test]
     fn add(){
         assert_eq!((F2(false).add(&F2(true))).0, true);
         assert_eq!((F2(false).add(&F2(false))).0, false);

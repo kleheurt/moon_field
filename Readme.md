@@ -1,2 +1,2 @@
 *For educational purpose only*
-A simple prime field implementation.
+Some simple finite fields implementations.
