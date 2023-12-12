@@ -1,4 +1,4 @@
-pub trait Field{
+pub trait Field: Sized{
     const ZERO: Self;
     const ONE: Self;
 
@@ -10,6 +10,6 @@ pub trait Field{
 
     fn neg(&'_ mut self) -> &'_ mut Self;
 
-    fn inv(&self) -> Option<&Self>;
+    fn inv(&self) -> Option<Self>;
 
 }

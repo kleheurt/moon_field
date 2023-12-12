@@ -32,8 +32,8 @@ impl Field for F3{
         self
     }
 
-    fn inv(&self) -> Option<&Self>{
-        if self.0 != 0 { Some(&self)} else { None } // returning ref to self ?
+    fn inv(&self) -> Option<Self>{
+        if self.0 != 0 { Some(F3(self.0))} else { None } // returning ref to self ?
     }
 
 

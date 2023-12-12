@@ -21,8 +21,8 @@ impl Field for F2{
         self
     }
 
-    fn inv(&self) -> Option<&Self>{
-        if self.0 { Some(&F2(true)) } else { None }
+    fn inv(&self) -> Option<Self>{
+        if self.0 { Some(F2(true)) } else { None }
     }
 
 }
