@@ -13,3 +13,7 @@ pub trait Field: Sized{
     fn inv(&self) -> Option<Self>;
 
 }
+
+pub trait InvField {
+    fn inv2(&'_ mut self) -> Self;
+}
