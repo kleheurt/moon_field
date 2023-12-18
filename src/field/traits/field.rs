@@ -15,5 +15,25 @@ pub trait Field: Sized{
 }
 
 pub trait InvField {
-    fn inv2(&'_ mut self) -> Self;
+    fn inv2(&self) -> Self;
+}
+
+pub trait ExtField: Sized {
+
+    const LOGEXP: ([u8;256],[u8; 256]);
+
+    fn div(&self, other: &Self) -> Option<Self>;
+
+    fn sub(&self, other: &Self) -> Self;
+
+    fn mul2(&self, other: &Self) -> Self;
+
+    fn log(&self) -> Self;
+
+    fn pow(&self, e: u8) -> Self;
+
+    fn pow2(&self, e: u8) -> Self;
+
+    fn exp(&self) -> Self;
+
 }

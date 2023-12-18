@@ -3,6 +3,52 @@ use crate::field::traits::field::*;
 #[derive(Copy, Clone)]
 pub struct F256(pub u8);
 
+    // generate log and antilog lookup tables
+    const fn logexp_f256() -> ([u8; 256], [u8; 256]) {
+        let mut log: [u8; 256] = [0;256];
+        let mut exp: [u8; 256] = [0;256];
+        let g: u16 = 0x03;
+        let mut t: u16 = 0x01;
+        let mut i: u8 = 0x00;
+        while i < u8::MAX{
+            exp[i as usize] = t as u8;
+            log[t as usize] = i as u8;
+            t = mul_f256(t,g);
+            i += 1;
+        }
+        (log,exp)
+    }
+
+    // multiply over F256 through shift and xor
+    const fn mul_f256(x: u16, y: u16) -> u16 {
+        if x == 0 || y == 0 { return 0; }
+
+        // multiply both terms on 2 bytes
+        let mut acc: u16 = 0x00;
+        let mut i = 7;
+        while i >= 0 {
+            if (0x01 << i) & y > 0 { 
+                if acc == 0 { acc = x << i; }
+                else { acc ^= x << i; }
+            }
+            i -= 1;
+        }
+
+        // modulo (x^8 + x^4 + x^3 + x + 1) = 0x11B
+        // ie reducing polynomial for GF(2^8)
+        while acc >= 0x01 << 8{
+            let mut p: u16 = 0x11B;
+            while acc ^ p > p {
+                p = p << 1;
+            }
+            acc ^= p;
+        }
+
+        acc
+    }
+    
+
+
 /**
  * full byte storage
  * multiplication on two bytes
@@ -19,28 +65,9 @@ impl Field for F256{
 
     // shift and xor method
     fn mul(&self, other: &Self) -> Self{
-        // multiply both terms on 2 bytes
-        let x = self.0 as u16;
-        let mut acc: u16 = 0x00;
-        for i in (0..=7).rev() {
-            if (0x01 << i) & other.0 > 0 { 
-                if acc == 0 { acc = x << i; }
-                else { acc ^= x << i; }
-            }
-        }
 
-        // modulo (x^8 + x^4 + x^3 + x + 1) = 0x11B
-        // ie reducing polynomial for GF(2^8)
-        while acc >= 0x01 << 8{
-            let mut p: u16 = 0x11B;
-            while acc ^ p > p {
-                p = p << 1;
-            }
-            acc ^= p;
-        }
+        F256(mul_f256(self.0 as u16,other.0 as u16) as u8)
 
-        // downcasting to a byte
-        F256(acc as u8)
     } 
 
     // subtraction and addition are identical in GF(2^8)
@@ -60,22 +87,62 @@ impl Field for F256{
 }
 
 impl InvField for F256{
-    
-    // Itoh-Tsujii inversion algorithm
-    fn inv2(&'_ mut self) -> Self{
 
-        // compute = self^r 
-        // with r = (2^8 - 1) / (2 - 1) = 255
-        let mut a: F256 = *self;
-        for _i in 0..253 {
-            a = a.mul(self);
-        }
-
-        // in GF(2) inversion is a NOOP
-        // hence we skip the rest and return
-        a
+    // lookup method
+    fn inv2(&self) -> Self{
+       F256(Self::LOGEXP.1[(255 - self.log().0) as usize])
     }
 }
+
+impl ExtField for F256{
+    
+    const LOGEXP: ([u8;256],[u8; 256]) = logexp_f256();
+
+    fn div(&self, other: &Self) -> Option<Self>{
+        if other.0 == 0 { return None; }
+        if self.0 == 0 { return Some(F256(0)); }
+        Some(self.mul(&other.inv2()))
+    }
+
+    fn sub(&self, other: &Self) -> Self{
+        self.add(other)
+    }
+
+    // lookup method
+    fn mul2(&self, other: &Self) -> Self{
+        if self.0 == 0 || other.0 == 0 { return F256(0); }
+        let z: u16 = self.log().0 as u16 + other.log().0 as u16;
+        F256((z % 255) as u8).exp()
+    }
+
+    fn log(&self) -> Self {
+        F256(Self::LOGEXP.0[self.0 as usize])
+    }
+
+    fn exp(&self) -> Self {
+        F256(Self::LOGEXP.1[self.0 as usize])
+    }
+
+    // a^n = g^(n log(a) mod g)
+    fn pow(&self, e: u8) -> Self{
+        if e == 0 { return F256(1); }
+        if self.0 == 0 { return F256(0); }
+        let z: usize = ((e as u16 * self.log().0 as u16) % 255) as usize;
+        F256(Self::LOGEXP.1[z])
+    }
+
+    // a^n = a * a * ... * a (n times)
+    fn pow2(&self, e: u8) -> Self{
+        if e == 0 { return F256(1); }
+        if self.0 == 0 { return F256(0); }
+        let mut x: F256 = *self;
+        for _i in 1..e{
+            x = x.mul2(self);
+        }
+        x
+    }
+}
+
 
 
 #[cfg(test)]
@@ -120,9 +187,11 @@ mod tests {
     #[test]
     fn inv2(){
 
-        assert_eq!(F256(1).inv2().mul(&F256(1)).0, 1);
         assert_eq!(F256(255).inv2().mul(&F256(255)).0, 1);
+        assert_eq!(F256(255).inv2().mul2(&F256(255)).0, 1);
         assert_eq!(F256(128).inv2().mul(&F256(128)).0, 1);
+        assert_eq!(F256(128).inv2().mul2(&F256(128)).0, 1);
+
         assert_eq!(F256(0).inv2().mul(&F256(0)).0, 0);
 
     }
@@ -130,5 +199,19 @@ mod tests {
     #[test]
     fn inv(){
        // untested
+    }
+
+    #[test]
+    fn mul2(){
+
+        assert_eq!((F256(0x53).mul2(&F256(0xCA))).0, 0x1);
+    }
+
+    #[test]
+    fn pow() {
+        assert_eq!(F256(123).pow(2).0, F256(123).pow2(2).0);
+        assert_eq!(F256(255).pow(3).0, F256(255).pow2(3).0);
+        assert_eq!(F256(1).pow(4).0, F256(1).pow2(4).0);
+
     }
 }
